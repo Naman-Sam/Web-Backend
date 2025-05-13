@@ -17,9 +17,7 @@ app.use(express.json());
 app.use(
   cors({
     origin: [
-      'http://localhost:3000', // Localhost shorthand
-      'http://127.0.0.1:5500', // Exact IP used by Live Server
-      process.env.FRONTEND_URL || 'https://your-deployed-frontend-url.com', // Deployed frontend
+      process.env.FRONTEND_URL, // Deployed frontend
     ],
     methods: ['GET', 'POST', 'DELETE', 'PUT', 'PATCH'], // Allowed methods
     allowedHeaders: ['Content-Type', 'Authorization', 'login', 'ts'], // Make sure custom headers are allowed
@@ -111,9 +109,7 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: [
-      'http://localhost:3000',
-      'http://127.0.0.1:5500',
-      process.env.FRONTEND_URL || 'https://your-deployed-frontend-url.com',
+      process.env.FRONTEND_URL,
     ],
     methods: ['GET', 'POST', 'DELETE', 'PUT', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization', 'login', 'ts'],
