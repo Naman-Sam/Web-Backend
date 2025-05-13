@@ -17,7 +17,7 @@ app.use(express.json());
 app.use(
   cors({
     origin: [
-      'https://seema-enterprises.netlify.app/',
+      'https://seema-enterprises.netlify.app',
     ],
     methods: ['GET', 'POST', 'DELETE', 'PUT', 'PATCH'], // Allowed methods
     allowedHeaders: ['Content-Type', 'Authorization', 'login', 'ts'], // Make sure custom headers are allowed
@@ -109,7 +109,7 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: [
-      'https://seema-enterprises.netlify.app/',
+      'https://seema-enterprises.netlify.app',
     ],
     methods: ['GET', 'POST', 'DELETE', 'PUT', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization', 'login', 'ts'],
