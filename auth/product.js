@@ -8,7 +8,7 @@ const router = express.Router();
 const storage = multer.memoryStorage();
 const upload = multer({
     storage,
-    limits: { fileSize: 4 * 1024 * 1024 }, // Max 4 MB per file
+    limits: { fileSize: 2 * 1024 * 1024 }, // Max 4 MB per file
 });
 
 // Helper Function: Compress and Upload Images
@@ -71,7 +71,7 @@ const isSuperUser = async (user_id) => {
 };
 
 // Add Product
-router.post('/add', upload.array('images', 5), async (req, res) => {
+router.post('/add', upload.array('images', 10), async (req, res) => {
     const {
         title,
         description,
@@ -116,8 +116,8 @@ router.post('/add', upload.array('images', 5), async (req, res) => {
         }
 
         // Validate and Upload Images
-        if (files.length > 5) {
-            return res.status(400).json({ error: 'You can upload a maximum of 5 images.' });
+        if (files.length > 10) {
+            return res.status(400).json({ error: 'You can upload a maximum of 10 images.' });
         }
 
         const imageUrls = [];
@@ -373,7 +373,7 @@ router.post('/fetch', async (req, res) => {
 });
 
 // Update Product by ID
-router.put('/update', upload.array('images', 5), async (req, res) => {
+router.put('/update', upload.array('images', 10), async (req, res) => {
     const { 
       user_id,
       product_id,
