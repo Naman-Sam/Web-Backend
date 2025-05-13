@@ -38,7 +38,7 @@ const sendOTPEmail = async (email, otp, purpose) => {
     
     <!-- Logo Section -->
     <div style="margin: 30px auto;">
-        <img src="https://wbxxsrsfoxfnpwdykzrt.supabase.co/storage/v1/object/public/images//PNG%20image%202.PNG" 
+        <img src="https://wbxxsrsfoxfnpwdykzrt.supabase.co/storage/v1/object/public/images//logowind.png" 
             alt="Company Logo" 
             style="max-width: 150px; height: auto; border-radius: 10px;" />
     </div>
