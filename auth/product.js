@@ -11,6 +11,14 @@ const upload = multer({
     limits: { fileSize: 2 * 1024 * 1024 }, // Max 4 MB per file
 });
 
+// A helper function to compress images with Sharp.
+// In this example, we convert any image to JPEG at 90% quality—adjust as needed.
+const compressImageBuffer = async (buffer) => {
+  return await sharp(buffer)
+    .jpeg({ quality: 90, chromaSubsampling: '4:4:4' })
+    .toBuffer();
+};
+
 // Helper Function: Compress and Upload Images
 const uploadImageToSupabase = async (buffer, fileName) => {
     try {
@@ -72,138 +80,152 @@ const isSuperUser = async (user_id) => {
 
 // Add Product
 router.post('/add', upload.array('images', 10), async (req, res) => {
-    const {
+  const {
+    title,
+    description,
+    category_ids, // Array of category IDs
+    type_ids, // Array of type IDs
+    option_ids, // Array of option IDs
+    initial_price, // Original price before discount
+    price, // Final price after applying discount
+    is_discounted,
+    discount_amount, // Actual discount amount (not percentage)
+    stock_quantity,
+    user_id
+  } = req.body;
+  const files = req.files;
+
+  try {
+    // Check Superuser Permissions
+    const isSuper = await isSuperUser(user_id);
+    if (!isSuper) {
+      return res.status(403).json({ error: 'Only superusers are allowed to add products.' });
+    }
+
+    // Validate and Parse Inputs
+    const parsedCategoryIds = Array.isArray(category_ids) ? category_ids : JSON.parse(category_ids || "[]");
+    const parsedTypeIds = Array.isArray(type_ids) ? type_ids : JSON.parse(type_ids || "[]");
+    const parsedOptionIds = Array.isArray(option_ids) ? option_ids : JSON.parse(option_ids || "[]");
+
+    if (!title || !initial_price || isNaN(initial_price)) {
+      return res.status(400).json({ error: 'Title and initial price are required.' });
+    }
+    if (parsedCategoryIds.length === 0) {
+      return res.status(400).json({ error: 'At least one category ID is required.' });
+    }
+
+    // Handle Discount Logic
+    const finalPrice = is_discounted === 'true'
+      ? parseFloat(initial_price) - parseFloat(discount_amount)
+      : parseFloat(initial_price);
+
+    if (finalPrice < 0) {
+      return res.status(400).json({ error: 'Discount amount cannot exceed the initial price.' });
+    }
+
+    // Validate and Upload Images
+    if (files.length > 10) {
+      return res.status(400).json({ error: 'You can upload a maximum of 10 images.' });
+    }
+
+    const imageUrls = [];
+    for (const file of files) {
+      let fileBuffer = file.buffer;
+      // If the file is larger than 4 MB, compress it.
+      if (file.size > 4 * 1024 * 1024) {
+        try {
+          fileBuffer = await compressImageBuffer(fileBuffer);
+          console.log(`Compressed ${file.originalname} from ${file.size} bytes to ${fileBuffer.length} bytes`);
+        } catch (compressionError) {
+          console.error(`Error compressing image ${file.originalname}:`, compressionError.message);
+          // You might choose to return an error or simply continue with the original file:
+          // return res.status(500).json({ error: `Compression failed on ${file.originalname}` });
+        }
+      }
+
+      try {
+        // uploadImageToSupabase should accept a buffer and filename.
+        const imageUrl = await uploadImageToSupabase(fileBuffer, file.originalname);
+        imageUrls.push(imageUrl);
+      } catch (err) {
+        console.error(`Error uploading image ${file.originalname}:`, err.message);
+      }
+    }
+
+    if (imageUrls.length === 0) {
+      return res.status(400).json({ error: 'No images were successfully uploaded.' });
+    }
+
+    // Insert Product into `products` Table
+    const { data: productData, error: productError } = await supabase
+      .from('products')
+      .insert([{
         title,
         description,
-        category_ids, // Array of category IDs
-        type_ids, // Array of type IDs
-        option_ids, // Array of option IDs
-        initial_price, // Original price before discount
-        price, // Final price after applying discount
-        is_discounted,
-        discount_amount, // Actual discount amount (not percentage)
-        stock_quantity,
-        user_id
-    } = req.body;
-    const files = req.files;
+        initial_price: parseFloat(initial_price),
+        price: finalPrice,
+        is_discounted: is_discounted === 'true',
+        discount_amount: parseFloat(discount_amount),
+        images: imageUrls,
+        stock_quantity: parseInt(stock_quantity) || 0
+      }])
+      .select();
 
-    try {
-        // Check Superuser Permissions
-        const isSuper = await isSuperUser(user_id);
-        if (!isSuper) {
-            return res.status(403).json({ error: 'Only superusers are allowed to add products.' });
-        }
-
-        // Validate and Parse Inputs
-        const parsedCategoryIds = Array.isArray(category_ids) ? category_ids : JSON.parse(category_ids || "[]");
-        const parsedTypeIds = Array.isArray(type_ids) ? type_ids : JSON.parse(type_ids || "[]");
-        const parsedOptionIds = Array.isArray(option_ids) ? option_ids : JSON.parse(option_ids || "[]");
-
-        if (!title || !initial_price || isNaN(initial_price)) {
-            return res.status(400).json({ error: 'Title and initial price are required.' });
-        }
-        if (parsedCategoryIds.length === 0) {
-            return res.status(400).json({ error: 'At least one category ID is required.' });
-        }
-
-        // Handle Discount Logic
-        const finalPrice = is_discounted === 'true'
-            ? parseFloat(initial_price) - parseFloat(discount_amount)
-            : parseFloat(initial_price);
-
-        if (finalPrice < 0) {
-            return res.status(400).json({ error: 'Discount amount cannot exceed the initial price.' });
-        }
-
-        // Validate and Upload Images
-        if (files.length > 10) {
-            return res.status(400).json({ error: 'You can upload a maximum of 10 images.' });
-        }
-
-        const imageUrls = [];
-        for (const file of files) {
-            try {
-                const imageUrl = await uploadImageToSupabase(file.buffer, file.originalname);
-                imageUrls.push(imageUrl);
-            } catch (err) {
-                console.error(`Error uploading image ${file.originalname}:`, err.message);
-            }
-        }
-
-        if (imageUrls.length === 0) {
-            return res.status(400).json({ error: 'No images were successfully uploaded.' });
-        }
-
-        // Insert Product into `products` Table
-        const { data: productData, error: productError } = await supabase
-            .from('products')
-            .insert([{
-                title,
-                description,
-                initial_price: parseFloat(initial_price),
-                price: finalPrice,
-                is_discounted: is_discounted === 'true',
-                discount_amount: parseFloat(discount_amount),
-                images: imageUrls,
-                stock_quantity: parseInt(stock_quantity) || 0
-            }])
-            .select();
-
-        if (productError) {
-            console.error('Error adding product to database:', productError.message);
-            return res.status(500).json({ error: 'Failed to add product to the database.' });
-        }
-
-        const productId = productData[0].id;
-
-        // Link Product to Categories in `product_categories`
-        if (parsedCategoryIds.length > 0) {
-            const categoryEntries = parsedCategoryIds.map(category_id => ({ product_id: productId, category_id }));
-            const { error: categoryLinkError } = await supabase
-                .from('product_categories')
-                .insert(categoryEntries);
-
-            if (categoryLinkError) {
-                console.error('Error linking product to categories:', categoryLinkError.message);
-                return res.status(500).json({ error: 'Failed to link product to categories.' });
-            }
-        }
-
-        // Link Product to Types in `product_types`
-        if (parsedTypeIds.length > 0) {
-            const typeEntries = parsedTypeIds.map(type_id => ({ product_id: productId, type_id }));
-            const { error: typeLinkError } = await supabase
-                .from('product_types')
-                .insert(typeEntries);
-
-            if (typeLinkError) {
-                console.error('Error linking product to types:', typeLinkError.message);
-                return res.status(500).json({ error: 'Failed to link product to types.' });
-            }
-        }
-
-        // Link Product to Options in `product_options`
-        if (parsedOptionIds.length > 0) {
-            const optionEntries = parsedOptionIds.map(option_id => ({ product_id: productId, option_id }));
-            const { error: optionLinkError } = await supabase
-                .from('product_options')
-                .insert(optionEntries);
-
-            if (optionLinkError) {
-                console.error('Error linking product to options:', optionLinkError.message);
-                return res.status(500).json({ error: 'Failed to link product to options.' });
-            }
-        }
-
-        // Respond with success
-        res.status(201).json({
-            message: 'Product added successfully!',
-            product: productData[0]
-        });
-    } catch (err) {
-        console.error('Unexpected Error:', err.message);
-        res.status(500).json({ error: 'Internal server error.' });
+    if (productError) {
+      console.error('Error adding product to database:', productError.message);
+      return res.status(500).json({ error: 'Failed to add product to the database.' });
     }
+
+    const productId = productData[0].id;
+
+    // Link Product to Categories in `product_categories`
+    if (parsedCategoryIds.length > 0) {
+      const categoryEntries = parsedCategoryIds.map(category_id => ({ product_id: productId, category_id }));
+      const { error: categoryLinkError } = await supabase
+        .from('product_categories')
+        .insert(categoryEntries);
+
+      if (categoryLinkError) {
+        console.error('Error linking product to categories:', categoryLinkError.message);
+        return res.status(500).json({ error: 'Failed to link product to categories.' });
+      }
+    }
+
+    // Link Product to Types in `product_types`
+    if (parsedTypeIds.length > 0) {
+      const typeEntries = parsedTypeIds.map(type_id => ({ product_id: productId, type_id }));
+      const { error: typeLinkError } = await supabase
+        .from('product_types')
+        .insert(typeEntries);
+
+      if (typeLinkError) {
+        console.error('Error linking product to types:', typeLinkError.message);
+        return res.status(500).json({ error: 'Failed to link product to types.' });
+      }
+    }
+
+    // Link Product to Options in `product_options`
+    if (parsedOptionIds.length > 0) {
+      const optionEntries = parsedOptionIds.map(option_id => ({ product_id: productId, option_id }));
+      const { error: optionLinkError } = await supabase
+        .from('product_options')
+        .insert(optionEntries);
+
+      if (optionLinkError) {
+        console.error('Error linking product to options:', optionLinkError.message);
+        return res.status(500).json({ error: 'Failed to link product to options.' });
+      }
+    }
+
+    // Respond with success
+    res.status(201).json({
+      message: 'Product added successfully!',
+      product: productData[0]
+    });
+  } catch (err) {
+    console.error('Unexpected Error:', err.message);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
 });
 
 // Delete Product
